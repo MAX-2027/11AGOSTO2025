@@ -1,108 +1,174 @@
-<!DOCTYPE html>
-<html lang="es">
+<!doctype html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Mapa MANZANAS_1</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
+    <title>MAPA DE PRECIOS</title>
+    <link rel="stylesheet" href="css/leaflet.css">
+    <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
+    <link rel="stylesheet" href="css/qgis2web.css">
+    <link rel="stylesheet" href="css/fontawesome-all.min.css">
+    <link rel="stylesheet" href="css/leaflet.photon.css">
     <style>
-        #map { height: 90vh; }
-        #comments {
-            height: 10vh;
-            overflow-y: auto;
-            border-top: 1px solid #ccc;
-            padding: 5px;
+        html, body, #map {
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            margin: 0;
         }
-        .comment { border-bottom: 1px solid #eee; padding: 2px; }
+        textarea {
+            width: 100%;
+            min-height: 50px;
+            margin-top: 5px;
+        }
+        button {
+            margin-top: 5px;
+            padding: 5px 10px;
+            background: #2d89ef;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #1b5eaa;
+        }
     </style>
 </head>
 <body>
-
 <div id="map"></div>
-<div id="comments">
-    <strong>Comentarios:</strong>
-    <div id="commentList"></div>
-    <input type="text" id="commentInput" placeholder="Escribe un comentario..." style="width:80%">
-    <button id="sendComment">Enviar</button>
-</div>
 
-<!-- Leaflet JS -->
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-
-<!-- Supabase JS -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-<!-- Archivo GeoJSON -->
-<script src="MANZANAS_1.js"></script>
+<script src="js/qgis2web_expressions.js"></script>
+<script src="js/leaflet.js"></script>
+<script src="js/L.Control.Layers.Tree.min.js"></script>
+<script src="js/leaflet.rotatedMarker.js"></script>
+<script src="js/leaflet.pattern.js"></script>
+<script src="js/leaflet-hash.js"></script>
+<script src="js/Autolinker.min.js"></script>
+<script src="js/rbush.min.js"></script>
+<script src="js/labelgun.min.js"></script>
+<script src="js/labels.js"></script>
+<script src="js/leaflet.photon.js"></script>
+<script src="data/MANZANAS_1.js"></script>
 
 <script>
-    // Configura tu conexión a Supabase
-    const SUPABASE_URL = "https://ayehvsjxzzwgkdubpcnq.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5ZWh2c2p4enp3Z2tkdWJwY25xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxMjIwOTIsImV4cCI6MjA3MDY5ODA5Mn0.PcZ-paE_i8SycjhA7s1MrQePBYyEg1U8pVBg8wFkb1U";
-    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+var map = L.map('map', { zoomControl:false, maxZoom:28, minZoom:1 })
+    .fitBounds([[-2.898664371624175,-79.00151146570266],[-2.8684860886436003,-78.93974084302081]]);
 
-    let selectedPolygonId = null;
+var hash = new L.Hash(map);
+map.attributionControl.setPrefix(
+    '<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> &middot; ' +
+    '<a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; ' +
+    '<a href="https://qgis.org">QGIS</a>'
+);
+var autolinker = new Autolinker({truncate: {length: 30, location: 'smart'}});
 
-    // Crear mapa
-    const map = L.map('map').setView([-2.886, -78.962], 15);
-
-    // Capa base
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-
-    // Función para mostrar comentarios
-    async function loadComments(poligonoId) {
-        const { data, error } = await supabaseClient
-            .from('comentarios')
-            .select('*')
-            .eq('poligono_id', poligonoId)
-            .order('created_at', { ascending: false });
-        
-        const commentList = document.getElementById('commentList');
-        commentList.innerHTML = "";
-        if (error) {
-            commentList.innerHTML = "<em>Error cargando comentarios</em>";
-            return;
-        }
-        data.forEach(c => {
-            const div = document.createElement('div');
-            div.classList.add('comment');
-            div.textContent = c.texto;
-            commentList.appendChild(div);
-        });
+map.createPane('pane_GoogleSatellite_0');
+map.getPane('pane_GoogleSatellite_0').style.zIndex = 400;
+var layer_GoogleSatellite_0 = L.tileLayer(
+    'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+        pane: 'pane_GoogleSatellite_0',
+        opacity: 1.0,
+        minZoom: 1,
+        maxZoom: 28,
+        maxNativeZoom: 22
     }
+).addTo(map);
 
-    // Enviar comentario
-    document.getElementById('sendComment').addEventListener('click', async () => {
-        const text = document.getElementById('commentInput').value.trim();
-        if (!text || !selectedPolygonId) return;
-
-        const { error } = await supabaseClient
-            .from('comentarios')
-            .insert([{ poligono_id: selectedPolygonId, texto: text }]);
-        
-        if (!error) {
-            document.getElementById('commentInput').value = "";
-            loadComments(selectedPolygonId);
-        }
-    });
-
-    // Dibujar polígonos
-    L.geoJSON(json_MANZANAS_1, {
-        onEachFeature: function (feature, layer) {
-            const polyId = feature.properties[""];
-            layer.on('click', function () {
-                selectedPolygonId = polyId;
-                loadComments(polyId);
-            });
-            layer.bindPopup("Polígono ID: " + polyId);
-        },
-        style: { color: 'blue', weight: 2 }
-    }).addTo(map);
+function style_MANZANAS_1_0() {
+    return {
+        pane: 'pane_MANZANAS_1',
+        opacity: 1,
+        color: 'rgba(35,35,35,0.633)',
+        weight: 1.0, 
+        fill: true,
+        fillOpacity: 1,
+        fillColor: 'rgba(225,79,79,0.633)',
+        interactive: true,
+    }
+}
 </script>
 
+<!-- Cliente Supabase -->
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = "https://ayehvsjxzzwgkdubpcnq.supabase.co"; // 🔹 Cambia esto
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5ZWh2c2p4enp3Z2tkdWJwY25xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxMjIwOTIsImV4cCI6MjA3MDY5ODA5Mn0.PcZ-paE_i8SycjhA7s1MrQePBYyEg1U8pVBg8wFkb1U"; // 🔹 Cambia esto
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+async function guardarComentario(numeral, comentario) {
+    if (!comentario.trim()) {
+        alert("El comentario no puede estar vacío");
+        return;
+    }
+    const { error } = await supabaseClient
+        .from('comentarios')
+        .insert([{ numeral, comentario }]);
+    if (error) {
+        alert("Error al guardar comentario: " + error.message);
+    }
+}
+
+async function cargarComentarios(numeral) {
+    const { data, error } = await supabaseClient
+        .from('comentarios')
+        .select('*')
+        .eq('numeral', numeral)
+        .order('created_at', { ascending: false });
+    if (error) console.error(error);
+    return data || [];
+}
+
+async function mostrarComentarios(numeral, container) {
+    const comentarios = await cargarComentarios(numeral);
+    container.innerHTML = comentarios.length
+        ? comentarios.map(c => `<p>${c.comentario}</p>`).join('')
+        : "<p>Sin comentarios</p>";
+}
+
+// Escuchar cambios en tiempo real
+supabaseClient
+    .channel('comentarios-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'comentarios' }, payload => {
+        const { numeral } = payload.new;
+        const comentariosDiv = document.querySelector(`#comentarios-${numeral}`);
+        if (comentariosDiv) {
+            mostrarComentarios(numeral, comentariosDiv);
+        }
+    })
+    .subscribe();
+
+function pop_MANZANAS_1(feature, layer) {
+    const numeral = feature.properties['#'];
+    const popupContent = `
+        <table>
+            <tr>
+                <td><strong>#</strong><br />${numeral}</td>
+            </tr>
+            <tr>
+                <th>PRECIOXM2</th>
+                <td>${feature.properties['PRECIOXM2'] || ''}</td>
+            </tr>
+        </table>
+        <div id="comentarios-${numeral}">Cargando comentarios...</div>
+        <textarea id="comentario-input-${numeral}" placeholder="Escribe un comentario"></textarea>
+        <button onclick="guardarComentario(${numeral}, document.getElementById('comentario-input-${numeral}').value)">Enviar</button>
+    `;
+    layer.on('popupopen', function () {
+        const container = document.querySelector(`#comentarios-${numeral}`);
+        mostrarComentarios(numeral, container);
+    });
+    layer.bindPopup(popupContent, { maxHeight: 400 });
+}
+
+map.createPane('pane_MANZANAS_1');
+map.getPane('pane_MANZANAS_1').style.zIndex = 401;
+
+var layer_MANZANAS_1 = new L.geoJson(json_MANZANAS_1, {
+    interactive: true,
+    onEachFeature: pop_MANZANAS_1,
+    style: style_MANZANAS_1_0,
+}).addTo(map);
+</script>
 </body>
 </html>
