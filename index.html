@@ -1,283 +1,170 @@
 <!doctype html>
 <html lang="en">
-    <head>
-        <meta charset="utf-8">
-        <meta http-equiv="X-UA-Compatible" content="IE=edge">
-        <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
-        <meta name="mobile-web-app-capable" content="yes">
-        <meta name="apple-mobile-web-app-capable" content="yes">
-        <link rel="stylesheet" href="css/leaflet.css">
-        <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
-        <link rel="stylesheet" href="css/qgis2web.css">
-        <link rel="stylesheet" href="css/fontawesome-all.min.css">
-        <link rel="stylesheet" href="css/leaflet.photon.css">
-        <style>
-        html, body, #map {
-            width: 100%;
-            height: 100%;
-            padding: 0;
-            margin: 0;
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
+  <title>MAPA DE PRECIOS</title>
+  <link rel="stylesheet" href="css/leaflet.css">
+  <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
+  <link rel="stylesheet" href="css/qgis2web.css">
+  <link rel="stylesheet" href="css/fontawesome-all.min.css">
+  <link rel="stylesheet" href="css/leaflet.photon.css">
+  <style>
+    html, body, #map {
+      width: 100%;
+      height: 100%;
+      padding: 0;
+      margin: 0;
+    }
+    .comentarios-list {
+      max-height: 100px;
+      overflow-y: auto;
+      margin-top: 5px;
+      padding: 0;
+      list-style: none;
+    }
+    .comentarios-list li {
+      border-bottom: 1px solid #ccc;
+      padding: 2px 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- Scripts base -->
+  <script src="js/qgis2web_expressions.js"></script>
+  <script src="js/leaflet.js"></script>
+  <script src="js/L.Control.Layers.Tree.min.js"></script>
+  <script src="js/leaflet.rotatedMarker.js"></script>
+  <script src="js/leaflet.pattern.js"></script>
+  <script src="js/leaflet-hash.js"></script>
+  <script src="js/Autolinker.min.js"></script>
+  <script src="js/rbush.min.js"></script>
+  <script src="js/labelgun.min.js"></script>
+  <script src="js/labels.js"></script>
+  <script src="js/leaflet.photon.js"></script>
+  <script src="data/MANZANAS_1.js"></script>
+
+  <!-- SDK Supabase -->
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+    const SUPABASE_URL = 'https://pbamjdtxgktmoivjzzbr.supabase.co'
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiYW1qZHR4Z2t0bW9pdmp6emJyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxMjI3MjcsImV4cCI6MjA3MDY5ODcyN30.xXtunYTK4ZueKgozw1cmjAUfFOIwBEzp4aAlvX-PmOw'
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+    var map = L.map('map', { zoomControl:false, maxZoom:28, minZoom:1 })
+      .fitBounds([[-2.898664371624175,-79.00151146570266],[-2.8684860886436003,-78.93974084302081]])
+
+    var hash = new L.Hash(map)
+    map.attributionControl.setPrefix('Mapa generado con Leaflet y Supabase')
+
+    var autolinker = new Autolinker({ truncate: { length: 30, location: 'smart' } })
+
+    function removeEmptyRowsFromPopupContent(content, feature) {
+      var tempDiv = document.createElement('div')
+      tempDiv.innerHTML = content
+      var rows = tempDiv.querySelectorAll('tr')
+      for (var i = 0; i < rows.length; i++) {
+        var td = rows[i].querySelector('td.visible-with-data')
+        var key = td ? td.id : ''
+        if (td && td.classList.contains('visible-with-data') && feature.properties[key] == null) {
+          rows[i].parentNode.removeChild(rows[i])
         }
-        </style>
-        <title>MAPA DE PRECIOS </title>
-    
-    <!-- 🔌 Firebase (fill your config below) -->
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-    <script>
-      // TODO: Reemplaza con tu configuración de Firebase
-      // Crea un proyecto -> Realtime Database -> Copia las credenciales aquí.
-      const firebaseConfig = {
-        apiKey: "AIzaSyClt9pn5pyJqeVES5sCPiIuvwEZQ1eLPXk",
-        authDomain: "brasil-dd6e7.firebaseapp.com",
-        databaseURL: "https://brasil-dd6e7-default-rtdb.firebaseio.com",
-        projectId: "brasil-dd6e7",
-        storageBucket: "brasil-dd6e7.firebasestorage.app",
-        messagingSenderId: "461452464939",
-        appId: "1:461452464939:web:052b68d3f0e1379385ab6e"
-      };
-      // Inicializa Firebase solo si no está iniciado
-      if (!window.firebaseApp) {
-        window.firebaseApp = firebase.initializeApp(firebaseConfig);
-        window.firebaseDB = firebase.database();
       }
-    </script>
-    <style>
-      .comments-box { font: 14px/1.3 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-      .comments-box h4 { margin: 0 0 .25rem 0; font-size: 1rem; }
-      .comments-list { max-height: 140px; overflow:auto; border:1px solid #ddd; padding:.5rem; border-radius:.5rem; background:#fff; }
-      .comments-list .item { padding:.15rem .25rem; border-bottom:1px dashed #eaeaea; }
-      .comments-list .item:last-child { border-bottom:none; }
-      .stats { margin-top:.35rem; font-size:.9rem; opacity:.9; }
-      .row { display:flex; gap:.35rem; margin-top:.35rem; }
-      .row input[type="number"] { flex:1; padding:.4rem .5rem; border:1px solid #bbb; border-radius:.5rem; }
-      .row button { padding:.45rem .75rem; border:0; border-radius:.5rem; cursor:pointer; background:#2563eb; color:white; }
-      .muted { opacity:.65; }
-    </style>
-    </head>
-    
-    <body>
-        <div id="map">
-        </div>
-        <script src="js/qgis2web_expressions.js"></script>
-        <script src="js/leaflet.js"></script>
-        <script src="js/L.Control.Layers.Tree.min.js"></script>
-        <script src="js/leaflet.rotatedMarker.js"></script>
-        <script src="js/leaflet.pattern.js"></script>
-        <script src="js/leaflet-hash.js"></script>
-        <script src="js/Autolinker.min.js"></script>
-        <script src="js/rbush.min.js"></script>
-        <script src="js/labelgun.min.js"></script>
-        <script src="js/labels.js"></script>
-        <script src="js/leaflet.photon.js"></script>
-        <script src="data/MANZANAS_1.js"></script>
-        
-    <script>
-        // ======= Utilidades de comentarios en tiempo real (Firebase) =======
-        function polygonKey(feature) {
-            // Usamos el campo "#" si existe; de lo contrario, un fallback
-            try {
-                if (feature && feature.properties && (feature.properties['#'] !== null && feature.properties['#'] !== undefined)) {
-                    return String(feature.properties['#']);
-                }
-            } catch (e) {}
-            return String(feature && (feature.fid || feature.id || Math.random().toString(36).slice(2)));
-        }
+      return tempDiv.innerHTML
+    }
 
-        function renderComments(container, obj) {
-            const list = container.querySelector('.comments-list');
-            const stats = container.querySelector('.stats');
-            list.innerHTML = '';
-            const entries = obj ? Object.values(obj) : [];
-            // Orden por tiempo asc
-            entries.sort((a,b) => (a.ts||0) - (b.ts||0));
-            let sum = 0;
-            entries.forEach(en => {
-                const val = Number(en.value);
-                if (!Number.isFinite(val)) return;
-                sum += val;
-                const div = document.createElement('div');
-                const d = en.ts ? new Date(en.ts) : null;
-                div.className = 'item';
-                div.textContent = `${val}${d ? ' · ' + d.toLocaleString() : ''}`;
-                list.appendChild(div);
-            });
-            const avg = entries.length ? (sum/entries.length) : 0;
-            stats.textContent = `Registros: ${entries.length}` + (entries.length ? ` · Promedio: ${avg.toFixed(2)}` : '');
-        }
+    async function guardarComentario(poligonoId) {
+      const textarea = document.getElementById(`comentario-${poligonoId}`)
+      const texto = textarea.value.trim()
+      if (!texto) return alert('Escribe un comentario')
 
-        function setupPopupRealtime(polygonId, container) {
-            if (!window.firebaseDB) return;
-            // Suscripción en tiempo real
-            const ref = window.firebaseDB.ref('comments/' + polygonId);
-            ref.off(); // evitar duplicados
-            ref.on('value', snap => {
-                renderComments(container, snap.val());
-            });
+      const { error } = await supabase
+        .from('comentarios')
+        .insert({ poligono_id: poligonoId, comentario: texto })
 
-            // Envío del valor
-            const input = container.querySelector('input[type="number"]');
-            const btn = container.querySelector('button[data-action="send"]');
-            const feedback = container.querySelector('.feedback');
+      if (error) {
+        console.error(error)
+        alert('Error al guardar comentario')
+      } else {
+        textarea.value = ''
+        cargarComentarios(poligonoId)
+      }
+    }
 
-            function send() {
-                const raw = input.value.trim();
-                if (raw === '') { feedback.textContent = 'Ingresa un número.'; return; }
-                const num = Number(raw);
-                if (!Number.isFinite(num)) { feedback.textContent = 'Debe ser un número válido.'; return; }
-                // Guardar
-                ref.push({ value: num, ts: Date.now() })
-                   .then(() => { input.value=''; feedback.textContent = 'Guardado ✔'; setTimeout(()=>feedback.textContent='', 1200); })
-                   .catch(err => { feedback.textContent = 'Error: ' + err.message; });
-            }
-            btn.addEventListener('click', send);
-            input.addEventListener('keyup', (e) => { if (e.key === 'Enter') send(); });
-        }
+    async function cargarComentarios(poligonoId) {
+      const { data, error } = await supabase
+        .from('comentarios')
+        .select('*')
+        .eq('poligono_id', poligonoId)
+        .order('creado_en', { ascending: false })
 
-        // ======= Fin utilidades Firebase =======
+      if (!error) {
+        const lista = document.getElementById(`lista-${poligonoId}`)
+        lista.innerHTML = ''
+        data.forEach(c => {
+          const li = document.createElement('li')
+          li.textContent = c.comentario
+          lista.appendChild(li)
+        })
+      }
+    }
 
-        var map = L.map('map', {
-            zoomControl:false, maxZoom:28, minZoom:1
-        }).fitBounds([[-2.898664371624175,-79.00151146570266],[-2.8684860886436003,-78.93974084302081]]);
-        var hash = new L.Hash(map);
-        map.attributionControl.setPrefix('<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
-        var autolinker = new Autolinker({truncate: {length: 30, location: 'smart'}});
-        // remove popup's row if "visible-with-data"
-        function removeEmptyRowsFromPopupContent(content, feature) {
-         var tempDiv = document.createElement('div');
-         tempDiv.innerHTML = content;
-         var rows = tempDiv.querySelectorAll('tr');
-         for (var i = 0; i < rows.length; i++) {
-             var td = rows[i].querySelector('td.visible-with-data');
-             var key = td ? td.id : '';
-             if (td && td.classList.contains('visible-with-data') && feature.properties[key] == null) {
-                 rows[i].parentNode.removeChild(rows[i]);
-             }
-         }
-         return tempDiv.innerHTML;
-        }
-        // add class to format popup if it contains media
-		function addClassToPopupIfMedia(content, popup) {
-			var tempDiv = document.createElement('div');
-			tempDiv.innerHTML = content;
-			if (tempDiv.querySelector('td img')) {
-				popup._contentNode.classList.add('media');
-					// Delay to force the redraw
-					setTimeout(function() {
-						popup.update();
-					}, 10);
-			} else {
-				popup._contentNode.classList.remove('media');
-			}
-		}
-        var title = new L.Control({'position':'topleft'});
-        title.onAdd = function (map) {
-            this._div = L.DomUtil.create('div', 'info');
-            this.update();
-            return this._div;
-        };
-        title.update = function () {
-            this._div.innerHTML = '<h2>MAPA DE PRECIOS </h2>';
-        };
-        title.addTo(map);
-        var abstract = new L.Control({'position':'bottomright'});
-        abstract.onAdd = function (map) {
-            this._div = L.DomUtil.create('div',
-            'leaflet-control abstract');
-            this._div.id = 'abstract'
+    function pop_MANZANAS_1(feature, layer) {
+      const poligonoId = feature.properties['#'] || feature.properties['id'] || Math.random().toString(36).substring(2)
 
-                abstract.show();
-                return this._div;
-            };
-            abstract.show = function () {
-                this._div.classList.remove("abstract");
-                this._div.classList.add("abstractUncollapsed");
-                this._div.innerHTML = 'BRASIL';
-        };
-        abstract.addTo(map);
-        var zoomControl = L.control.zoom({
-            position: 'topleft'
-        }).addTo(map);
-        var bounds_group = new L.featureGroup([]);
-        function setBounds() {
-        }
-        map.createPane('pane_GoogleSatellite_0');
-        map.getPane('pane_GoogleSatellite_0').style.zIndex = 400;
-        var layer_GoogleSatellite_0 = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-            pane: 'pane_GoogleSatellite_0',
-            opacity: 1.0,
-            attribution: '',
-            minZoom: 1,
-            maxZoom: 28,
-            minNativeZoom: 0,
-            maxNativeZoom: 22
-        });
-        layer_GoogleSatellite_0;
-        map.addLayer(layer_GoogleSatellite_0);
-        function pop_MANZANAS_1(feature, layer) {
-            var popupContent = '<div class="comments-box">' +
-                    '<h4>Polígono: ' + polygonKey(feature) + '</h4>' +
-                    '<div class="comments-list"></div>' +
-                    '<div class="stats muted"></div>' +
-                    '<div class="row">' +
-                        '<input type="number" step="any" placeholder="Escribe un número..." />' +
-                        '<button data-action="send" title="Enviar">Enviar</button>' +
-                    '</div>' +
-                    '<div class="feedback muted" style="min-height:1.2em;margin-top:.25rem;"></div>' +
-                '</div>' +
-                '<hr style="margin:.5rem 0;border:none;border-top:1px solid #e5e7eb" />' +
-                '<table>\
+      var popupContent = `
+        <table>
+          <tr>
+            <td><strong>#</strong><br />${feature.properties['#'] ?? ''}</td>
+          </tr>
+          <tr>
+            <th scope="row">PRECIOXM2</th>
+            <td>${feature.properties['PRECIOXM2'] ?? ''}</td>
+          </tr>
+        </table>
+        <textarea id="comentario-${poligonoId}" placeholder="Escribe un comentario" style="width:100%;"></textarea>
+        <button onclick="guardarComentario('${poligonoId}')">Enviar</button>
+        <ul id="lista-${poligonoId}" class="comentarios-list"></ul>
+      `
+      var content = removeEmptyRowsFromPopupContent(popupContent, feature)
+      layer.bindPopup(content, { maxHeight: 400 })
 
-                    <tr>\
-                        <td class="visible-with-data" id="#" colspan="2"><strong>#</strong><br />' + (feature.properties['#'] !== null ? autolinker.link(String(feature.properties['#']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
-                    </tr>\
-                    <tr>\
-                        <th scope="row">PRECIOXM2</th>\
-                        <td class="visible-with-data" id="PRECIOXM2">' + (feature.properties['PRECIOXM2'] !== null ? autolinker.link(String(feature.properties['PRECIOXM2']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
-                    </tr>\
-                </table>';
-            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
-			layer.on('popupopen', function(e) {
-				addClassToPopupIfMedia(content, e.popup);
-			});
-			layer.bindPopup(content, { maxHeight: 400 });
-            layer.on('popupopen', function(e) {
-                const pid = polygonKey(feature);
-                const box = e.popup.getElement().querySelector('.comments-box');
-                if (box) { setupPopupRealtime(pid, box); }
-            });
-        }
+      layer.on('popupopen', function() {
+        cargarComentarios(poligonoId)
+      })
+    }
 
-        function style_MANZANAS_1_0() {
-            return {
-                pane: 'pane_MANZANAS_1',
-                opacity: 1,
-                color: 'rgba(35,35,35,0.633)',
-                dashArray: '',
-                lineCap: 'butt',
-                lineJoin: 'miter',
-                weight: 1.0, 
-                fill: true,
-                fillOpacity: 1,
-                fillColor: 'rgba(225,79,79,0.633)',
-                interactive: true,
-            }
-        }
-        map.createPane('pane_MANZANAS_1');
-        map.getPane('pane_MANZANAS_1').style.zIndex = 401;
-        map.getPane('pane_MANZANAS_1').style['mix-blend-mode'] = 'normal';
-        var layer_MANZANAS_1 = new L.geoJson(json_MANZANAS_1, {
-            attribution: '',
-            interactive: true,
-            dataVar: 'json_MANZANAS_1',
-            layerName: 'layer_MANZANAS_1',
-            pane: 'pane_MANZANAS_1',
-            onEachFeature: pop_MANZANAS_1,
-            style: style_MANZANAS_1_0,
-        });
-        bounds_group.addLayer(layer_MANZANAS_1);
-        map.addLayer(layer_MANZANAS_1);
-        setBounds();
-        </script>
-    </body>
+    function style_MANZANAS_1_0() {
+      return {
+        pane: 'pane_MANZANAS_1',
+        opacity: 1,
+        color: 'rgba(35,35,35,0.633)',
+        weight: 1.0,
+        fill: true,
+        fillOpacity: 1,
+        fillColor: 'rgba(225,79,79,0.633)',
+        interactive: true,
+      }
+    }
+
+    map.createPane('pane_GoogleSatellite_0')
+    var layer_GoogleSatellite_0 = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}')
+    map.addLayer(layer_GoogleSatellite_0)
+
+    map.createPane('pane_MANZANAS_1')
+    var layer_MANZANAS_1 = new L.geoJson(json_MANZANAS_1, {
+      interactive: true,
+      onEachFeature: pop_MANZANAS_1,
+      style: style_MANZANAS_1_0,
+    })
+    map.addLayer(layer_MANZANAS_1)
+
+    // Hacer funciones globales
+    window.guardarComentario = guardarComentario
+  </script>
+</body>
 </html>
