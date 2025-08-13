@@ -1,131 +1,257 @@
 <!doctype html>
 <html lang="es">
-<head>
+  <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="initial-scale=1,width=device-width">
-    <link rel="stylesheet" href="css/leaflet.css">
-    <style>
-        html, body, #map {
-            width: 100%;
-            height: 100%;
-            margin: 0;
-        }
-        textarea {
-            width: 100%;
-            resize: vertical;
-            margin-top: 5px;
-        }
-        button {
-            margin-top: 5px;
-        }
-        .comment {
-            background: #f0f0f0;
-            border-radius: 5px;
-            padding: 3px 6px;
-            margin-bottom: 3px;
-        }
-        .loading {
-            font-style: italic;
-            color: gray;
-        }
-    </style>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
     <title>MAPA DE PRECIOS</title>
-</head>
-<body>
+    <link rel="stylesheet" href="css/leaflet.css">
+    <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
+    <link rel="stylesheet" href="css/qgis2web.css">
+    <link rel="stylesheet" href="css/fontawesome-all.min.css">
+    <link rel="stylesheet" href="css/leaflet.photon.css">
+    <style>
+      html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; }
+      .popup-section { margin-top: .75rem; }
+      .comments-header { font-weight: bold; margin-bottom: .25rem; }
+      .comment-item { margin: .35rem 0; border-bottom: 1px dashed #ccc; padding-bottom: .35rem; }
+      .comment-meta { font-size: .8rem; opacity: .7; }
+      .comment-text { white-space: pre-wrap; margin-top: .2rem; }
+      .comment-image { max-width: 100%; margin-top: .3rem; border-radius: 4px; }
+      .comment-form textarea, .comment-form input[type="text"], .comment-form input[type="file"] { width: 100%; }
+      .comment-form textarea { min-height: 64px; resize: vertical; }
+      .comment-form button { margin-top: .5rem; width: 100%; }
+      .muted { opacity:.65; font-size:.9rem; }
+      .error { color: #c00; font-size: .9rem; }
+      .success { color: #070; font-size: .9rem; }
+    </style>
+  </head>
+  <body>
     <div id="map"></div>
 
-    <!-- Librerías -->
+    <script src="js/qgis2web_expressions.js"></script>
     <script src="js/leaflet.js"></script>
+    <script src="js/L.Control.Layers.Tree.min.js"></script>
+    <script src="js/leaflet.rotatedMarker.js"></script>
+    <script src="js/leaflet.pattern.js"></script>
+    <script src="js/leaflet-hash.js"></script>
     <script src="js/Autolinker.min.js"></script>
+    <script src="js/rbush.min.js"></script>
+    <script src="js/labelgun.min.js"></script>
+    <script src="js/labels.js"></script>
+    <script src="js/leaflet.photon.js"></script>
     <script src="data/MANZANAS_1.js"></script>
 
-    <!-- Firebase -->
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script type="module">
+      // CONFIGURAR TU FIREBASE AQUÍ
+      const FIREBASE_CONFIG = {
+        apiKey: "AIzaSyClt9pn5pyJqeVES5sCPiIuvwEZQ1eLPXk",
+        authDomain: "brasil-dd6e7.firebaseapp.com",
+        projectId: "brasil-dd6e7",
+        storageBucket: "brasil-dd6e7.firebasestorage.app",
+        messagingSenderId: "461452464939",
+        appId: "1:461452464939:web:052b68d3f0e1379385ab6e",
+      };
+
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
+      import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-auth.js";
+      import {
+        getFirestore, collection, addDoc, serverTimestamp,
+        query, where, orderBy, onSnapshot
+      } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
+      import {
+        getStorage, ref, uploadBytes, getDownloadURL
+      } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-storage.js";
+
+      const app = initializeApp(FIREBASE_CONFIG);
+      const auth = getAuth(app);
+      const db = getFirestore(app);
+      const storage = getStorage(app);
+
+      signInAnonymously(auth).catch(console.error);
+
+      const escapeHTML = (str) => String(str)
+        .replace(/&/g,"&amp;")
+        .replace(/</g,"&lt;")
+        .replace(/>/g,"&gt;")
+        .replace(/"/g,"&quot;")
+        .replace(/'/g,"&#039;");
+
+      async function getIpHash() {
+        try {
+          const res = await fetch("https://api.ipify.org?format=json");
+          const data = await res.json();
+          const enc = new TextEncoder().encode(data.ip);
+          const hashBuffer = await crypto.subtle.digest("SHA-256", enc);
+          const hashArray = Array.from(new Uint8Array(hashBuffer));
+          return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        } catch(e) {
+          console.warn("No se pudo obtener IP", e);
+          return "";
+        }
+      }
+
+      function renderComments(listEl, docs) {
+        listEl.innerHTML = "";
+        if (!docs.length) {
+          listEl.innerHTML = '<li class="muted">Sé el primero en comentar.</li>';
+          return;
+        }
+        for (const d of docs) {
+          const data = d.data();
+          const date = data.createdAt?.toDate?.() || new Date();
+          const name = escapeHTML(data.name || "Anónimo");
+          const text = escapeHTML(data.text || "");
+          const el = document.createElement("li");
+          el.className = "comment-item";
+          el.innerHTML = `
+            <div class="comment-meta">${name} · ${date.toLocaleString()}</div>
+            <div class="comment-text">${text}</div>
+            ${data.imageUrl ? `<img class="comment-image" src="${escapeHTML(data.imageUrl)}">` : ""}
+          `;
+          listEl.appendChild(el);
+        }
+      }
+
+      async function setupCommentsFor(featureId, popupRoot) {
+        const ul = popupRoot.querySelector(".comments-list");
+        const form = popupRoot.querySelector(".comment-form");
+        const nameInput = popupRoot.querySelector("input[name='name']");
+        const textArea = popupRoot.querySelector("textarea[name='text']");
+        const fileInput = popupRoot.querySelector("input[name='image']");
+        const statusEl = popupRoot.querySelector(".submit-status");
+
+        const qRef = query(
+          collection(db, "comments"),
+          where("featureId", "==", String(featureId)),
+          orderBy("createdAt", "asc")
+        );
+        onSnapshot(qRef, (snap)=> {
+          renderComments(ul, snap.docs);
+        }, (err)=> {
+          ul.innerHTML = `<li class="error">Error cargando: ${escapeHTML(err.message)}</li>`;
+        });
+
+        form.addEventListener("submit", async (ev)=> {
+          ev.preventDefault();
+          statusEl.textContent = "";
+          const name = nameInput.value.trim().slice(0, 60);
+          const text = textArea.value.trim().slice(0, 2000);
+          const file = fileInput.files[0];
+
+          if (!text) {
+            statusEl.textContent = "Escribe un comentario.";
+            statusEl.className = "submit-status error";
+            return;
+          }
+
+          statusEl.textContent = "Enviando...";
+          statusEl.className = "submit-status muted";
+
+          try {
+            const ipHash = await getIpHash();
+            let imageUrl = "";
+            if (file) {
+              const imgRef = ref(storage, `commentImages/${Date.now()}_${file.name}`);
+              await uploadBytes(imgRef, file);
+              imageUrl = await getDownloadURL(imgRef);
+            }
+            await addDoc(collection(db, "comments"), {
+              featureId: String(featureId),
+              name: name || "Anónimo",
+              text,
+              imageUrl,
+              ipHash,
+              createdAt: serverTimestamp()
+            });
+            textArea.value = "";
+            fileInput.value = "";
+            statusEl.textContent = "¡Comentario enviado!";
+            statusEl.className = "submit-status success";
+          } catch (e) {
+            console.error(e);
+            statusEl.textContent = "Error enviando comentario.";
+            statusEl.className = "submit-status error";
+          }
+        });
+      }
+
+      window.__FirebaseComments__ = { setupCommentsFor };
+    </script>
 
     <script>
-        // 🔹 CONFIGURA AQUÍ TU PROYECTO FIREBASE
-        const firebaseConfig = {
-            apiKey: "AIzaSyClt9pn5pyJqeVES5sCPiIuvwEZQ1eLPXk",
-            authDomain: "brasil-dd6e7.firebaseapp.com",
-            projectId: "brasil-dd6e7",
-            storageBucket: "brasil-dd6e7.firebasestorage.app",
-            messagingSenderId: "461452464939",
-            appId: "1:461452464939:web:052b68d3f0e1379385ab6e"
-        };
+      var map = L.map('map', { zoomControl:false, maxZoom:28, minZoom:1 })
+        .fitBounds([[-2.8986,-79.0015],[-2.8684,-78.9397]]);
 
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
+      var hash = new L.Hash(map);
+      var autolinker = new Autolinker({truncate: {length: 30, location: 'smart'}});
+      var zoomControl = L.control.zoom({ position: 'topleft' }).addTo(map);
+      var bounds_group = new L.featureGroup([]);
+      function setBounds() {}
 
-        var map = L.map('map').fitBounds([[-2.89866, -79.00151], [-2.86848, -78.93974]]);
-        L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-            maxZoom: 22
-        }).addTo(map);
+      map.createPane('pane_GoogleSatellite_0');
+      map.getPane('pane_GoogleSatellite_0').style.zIndex = 400;
+      var layer_GoogleSatellite_0 = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+        pane: 'pane_GoogleSatellite_0', opacity: 1.0
+      });
+      map.addLayer(layer_GoogleSatellite_0);
 
-        function pop_MANZANAS_1(feature, layer) {
-            let id = feature.properties['#'];
-            let popupContent = `
-                <table>
-                    <tr><td><strong>#</strong> ${id}</td></tr>
-                    <tr><td>PRECIOXM2: ${feature.properties['PRECIOXM2'] || ''}</td></tr>
-                </table>
-                <div>
-                    <h4>Comentarios</h4>
-                    <div id="comments-${id}" class="loading">Cargando...</div>
-                    <textarea id="comment-input-${id}" placeholder="Escribe tu comentario"></textarea><br>
-                    <button onclick="addComment('${id}')">Enviar</button>
-                </div>
-            `;
-            layer.bindPopup(popupContent, { maxHeight: 400 });
-            layer.on('popupopen', () => loadComments(id));
-        }
+      function popupTable(feature) {
+        return '<table>' +
+            '<tr><td class="visible-with-data" colspan="2"><strong>#</strong><br />' + (feature.properties['#'] || '') + '</td></tr>' +
+            '<tr><th scope="row">PRECIOXM2</th><td>' + (feature.properties['PRECIOXM2'] || '') + '</td></tr>' +
+          '</table>';
+      }
 
-        function loadComments(polygonId) {
-            const commentsDiv = document.getElementById(`comments-${polygonId}`);
-            if (!commentsDiv) return;
-            commentsDiv.innerHTML = "Cargando...";
-            db.collection("comments")
-              .where("polygonId", "==", polygonId)
-              .orderBy("timestamp", "asc")
-              .onSnapshot(snapshot => {
-                  commentsDiv.innerHTML = "";
-                  if (snapshot.empty) {
-                      commentsDiv.innerHTML = "<em>Sin comentarios</em>";
-                      return;
-                  }
-                  snapshot.forEach(doc => {
-                      const data = doc.data();
-                      commentsDiv.innerHTML += `<div class="comment">${data.text}</div>`;
-                  });
-              }, err => {
-                  commentsDiv.innerHTML = `<span style="color:red;">Error al cargar: ${err.message}</span>`;
-              });
-        }
+      function buildCommentsSection(featureId) {
+        return `
+          <div class="popup-section">
+            <div class="comments-header">Comentarios (#${featureId})</div>
+            <ul class="comments-list"><li class="muted">Cargando…</li></ul>
+            <form class="comment-form">
+              <div class="muted">Tu nombre (opcional):</div>
+              <input type="text" name="name" maxlength="60" placeholder="Anónimo" />
+              <div class="muted">Escribe un comentario:</div>
+              <textarea name="text" maxlength="2000" placeholder="Comparte información útil…"></textarea>
+              <div class="muted">Subir imagen (opcional):</div>
+              <input type="file" name="image" accept="image/*">
+              <button type="submit">Publicar comentario</button>
+              <div class="submit-status muted" aria-live="polite"></div>
+            </form>
+          </div>
+        `;
+      }
 
-        function addComment(polygonId) {
-            const input = document.getElementById(`comment-input-${polygonId}`);
-            const text = input.value.trim();
-            if (!text) return;
-            input.disabled = true;
-            db.collection("comments").add({
-                polygonId,
-                text,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp()
-            }).then(() => {
-                input.value = "";
-                input.disabled = false;
-            }).catch(err => {
-                alert("Error al guardar: " + err.message);
-                input.disabled = false;
-            });
-        }
-
-        var layer_MANZANAS_1 = new L.geoJson(json_MANZANAS_1, {
-            interactive: true,
-            onEachFeature: pop_MANZANAS_1
+      function pop_MANZANAS_1(feature, layer) {
+        var fid = feature.properties['#'];
+        var content = popupTable(feature) + buildCommentsSection(fid);
+        layer.on('popupopen', function(e) {
+          var popupRoot = e.popup.getElement();
+          if (window.__FirebaseComments__ && popupRoot) {
+            window.__FirebaseComments__.setupCommentsFor(fid, popupRoot);
+          }
         });
-        map.addLayer(layer_MANZANAS_1);
-    </script>
-</body>
-</html>
+        layer.bindPopup(content, { maxHeight: 420 });
+      }
 
+      function style_MANZANAS_1_0() {
+        return {
+          color: 'rgba(35,35,35,0.633)',
+          weight: 1,
+          fillColor: 'rgba(225,79,79,0.633)',
+          fillOpacity: 1,
+        }
+      }
+
+      map.createPane('pane_MANZANAS_1');
+      map.getPane('pane_MANZANAS_1').style.zIndex = 401;
+      var layer_MANZANAS_1 = new L.geoJson(json_MANZANAS_1, {
+        onEachFeature: pop_MANZANAS_1,
+        style: style_MANZANAS_1_0
+      });
+      bounds_group.addLayer(layer_MANZANAS_1);
+      map.addLayer(layer_MANZANAS_1);
+      setBounds();
+    </script>
+  </body>
+</html>
